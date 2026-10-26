@@ -30,8 +30,8 @@ final class QueueServiceProvider extends ServiceProvider
                 assert($root instanceof ContainerInterface);
 
                 return new QueueManager($root->get(ConfigurationInterface::class), $root);
-            })
-            ->singleton(QueueInterface::class, static fn (ServiceResolverInterface $r): QueueInterface => $r->get(QueueManager::class)->driver())
+            })->uses(ConfigurationInterface::class)
+            ->singleton(QueueInterface::class, static fn (ServiceResolverInterface $r): QueueInterface => $r->get(QueueManager::class)->driver())->uses(QueueManager::class)
             ->singleton(Dispatcher::class)
             ->singleton(Worker::class, static function (ServiceResolverInterface $root): Worker {
                 assert($root instanceof ContainerInterface);
@@ -41,7 +41,7 @@ final class QueueServiceProvider extends ServiceProvider
                     $root,
                     $root->has(LoggerInterface::class) ? $root->get(LoggerInterface::class) : null,
                 );
-            });
+            })->uses(QueueInterface::class, LoggerInterface::class);
 
         foreach ([WorkCommand::class, FailedCommand::class, RetryCommand::class, TableCommand::class] as $command) {
             $services->singleton($command)->tag(ConsoleKernel::TAG, $command);
