@@ -154,3 +154,25 @@ final class MemoryLogger extends AbstractLogger
         $this->records[] = [(string) $level, (string) $message, $context];
     }
 }
+
+/**
+ * A job with protected and private properties: serialize() writes NUL bytes for them.
+ */
+final class EncapsulatedJob
+{
+    protected int $tries;
+
+    public function __construct(private string $email, int $tries)
+    {
+        $this->tries = $tries;
+    }
+
+    public function handle(): void
+    {
+    }
+
+    public function email(): string
+    {
+        return $this->email . '/' . $this->tries;
+    }
+}

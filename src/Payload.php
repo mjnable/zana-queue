@@ -11,6 +11,11 @@ namespace Zana\Queue;
  * properties declare, recursively (enums and DateTime included). Objects held
  * in untyped or array properties come back as __PHP_Incomplete_Class, which
  * is rejected. Payloads must still come from a trusted store.
+ *
+ * Payloads are base64 (2.13): serialize() writes NUL bytes for protected and
+ * private properties, and PostgreSQL silently truncates text at the first
+ * one. Payloads written before 2.13, as plain serialize() output, are still
+ * read.
  */
 final class Payload
 {
@@ -24,7 +29,7 @@ final class Payload
         }
 
         try {
-            return serialize($job);
+            return base64_encode(serialize($job));
         } catch (\Throwable $e) {
             throw new QueueException('The job ' . $job::class . ' cannot be serialized: ' . $e->getMessage(), previous: $e);
         }
@@ -37,7 +42,7 @@ final class Payload
      */
     public static function className(string $payload): string
     {
-        if (preg_match('/^O:\d+:"([^"]+)"/', $payload, $match) !== 1 || !class_exists($match[1])) {
+        if (preg_match('/^O:\d+:"([^"]+)"/', self::serialized($payload), $match) !== 1 || !class_exists($match[1])) {
             throw new QueueException('The payload does not describe a known job class.');
         }
 
@@ -48,7 +53,7 @@ final class Payload
     {
         $class = self::className($payload);
         try {
-            $job = @unserialize($payload, ['allowed_classes' => self::allowedClasses($class)]);
+            $job = @unserialize(self::serialized($payload), ['allowed_classes' => self::allowedClasses($class)]);
         } catch (\Throwable $e) {
             throw new QueueException("The payload for {$class} cannot be read: " . $e->getMessage(), previous: $e);
         }
@@ -61,6 +66,20 @@ final class Payload
         }
 
         return $job;
+    }
+
+    /**
+     * The serialize() output in a payload: base64 since 2.13, plain before (it starts with "O:", which
+     * base64 never contains).
+     */
+    private static function serialized(string $payload): string
+    {
+        if (str_starts_with($payload, 'O:')) {
+            return $payload;
+        }
+        $decoded = base64_decode($payload, true);
+
+        return $decoded === false ? '' : $decoded;
     }
 
     /**

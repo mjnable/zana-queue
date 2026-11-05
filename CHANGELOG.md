@@ -3,6 +3,16 @@
 All Zana packages share one version number and are released together. A release that did
 not change this package is not listed.
 
+## 2.13.0 — Unreleased
+
+### Fixed
+
+- The database queue works on PostgreSQL with jobs that have protected or private properties.
+  `serialize()` writes NUL bytes for them, and PostgreSQL silently truncated the payload at the
+  first one, so the job could not be read back. Payloads are now stored as base64; payloads
+  written by earlier versions are still read, so queued and failed jobs survive the upgrade.
+- Tested on SQLite, MySQL and PostgreSQL.
+
 ## 2.4.0 — 2026-10-26
 
 ### Changed

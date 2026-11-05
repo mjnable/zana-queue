@@ -31,7 +31,7 @@ $dispatcher->dispatch(new SendWelcomeMail($id), delay: 60);  // available in a m
   The last value repeats, and an empty list means no delay.
 - **Final failure:** after `tries` attempts the job moves to the failed jobs
   and an `error` is logged. Each retry before that logs a `warning`.
-- **Payloads:** jobs are stored with `serialize()`. When a payload is read
+- **Payloads:** jobs are stored with `serialize()`, as base64 (2.13). When a payload is read
   back, only the job class and the classes its typed properties declare are
   allowed. An object in an untyped or array property makes the job fail.
   Closures and anonymous classes cannot be queued.
