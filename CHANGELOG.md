@@ -3,6 +3,17 @@
 All Zana packages share one version number and are released together. A release that did
 not change this package is not listed.
 
+## 2.20.0 — Unreleased
+
+### Security
+
+- Queued jobs are signed, HMAC-SHA256 with `queue.key` or a key derived from `security.secret`, and the signature is
+  checked before anything is unserialized, so a row added to the queue table by anything but the application is refused
+  (S28). `PayloadKey` holds the key.
+- Unsigned jobs, written before 2.20, are refused; `queue.accept_unsigned: true` lets them through while the
+  queue drains. Without any key, jobs are neither signed nor checked, as before.
+- `check` warns (queue.payload_signing) when jobs are not signed, or unsigned ones are accepted.
+
 ## 2.13.0 — 2026-11-05
 
 ### Fixed

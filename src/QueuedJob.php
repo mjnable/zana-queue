@@ -16,6 +16,7 @@ final readonly class QueuedJob
         public string $payload,
         public int $attempts,
         public \DateTimeImmutable $availableAt,
+        private ?PayloadKey $key = null,
     ) {
     }
 
@@ -29,6 +30,6 @@ final readonly class QueuedJob
 
     public function job(): object
     {
-        return Payload::decode($this->payload);
+        return Payload::decode($this->payload, $this->key);
     }
 }

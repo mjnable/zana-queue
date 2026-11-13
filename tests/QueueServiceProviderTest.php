@@ -13,10 +13,12 @@ use Zana\Console\ConsoleServiceProvider;
 use Zana\Container\Contracts\ContainerInterface;
 use Zana\Container\Contracts\ServiceCollectionInterface;
 use Zana\Core\Application;
+use Zana\Database\DatabaseManager;
 use Zana\Database\DatabaseServiceProvider;
 use Zana\Queue\DatabaseQueue;
 use Zana\Queue\Dispatcher;
 use Zana\Queue\InMemoryQueue;
+use Zana\Queue\PayloadKey;
 use Zana\Queue\QueueException;
 use Zana\Queue\QueueInterface;
 use Zana\Queue\QueueManager;
@@ -85,6 +87,49 @@ final class QueueServiceProviderTest extends TestCase
         $this->console($kernel, ['command' => 'queue:work', '--stop-when-empty' => true]);
         $this->console($kernel, ['command' => 'queue:retry', 'id' => ['all']]);
         $this->assertSame(1, $queue->size('default'), 'retry all queues every failed job');
+    }
+
+    public function testTheDatabaseQueueSignsItsRowsAndRefusesForgedOnes(): void
+    {
+        file_put_contents("{$this->base}/config/security.php", "<?php return ['secret' => '" . str_repeat('s', 40) . "'];");
+        $container = $this->container('database');
+        $kernel = $container->get(ConsoleKernel::class);
+        $this->console($kernel, ['command' => 'queue:table']);
+        $this->console($kernel, ['command' => 'migrate']);
+        $db = $container->get(DatabaseManager::class)->connection();
+
+        $container->get(Dispatcher::class)->dispatch(new RecordJob('signed'));
+        $container->get(Dispatcher::class)->dispatch(new RecordJob('to be replaced'));
+        $rows = $db->table(DatabaseQueue::JOBS_TABLE)->orderBy('id')->get();
+        $this->assertTrue(PayloadKey::isSealed((string) $rows[0]['payload']), 'stored signed');
+
+        // Someone with write access to the table replaces a row's payload.
+        $marker = "{$this->base}/gadget-ran";
+        $gadget = new Gadget();
+        $gadget->file = $marker;
+        $db->table(DatabaseQueue::JOBS_TABLE)->where('id', $rows[1]['id'])->update(['payload' => base64_encode(serialize($gadget))]);
+        $gadget->file = '';
+
+        $this->console($kernel, ['command' => 'queue:work', '--stop-when-empty' => true]);
+        gc_collect_cycles();
+
+        $this->assertSame(['handle:signed', 'dispose:1'], Journal::$entries, 'the signed job ran');
+        $this->assertFileDoesNotExist($marker, 'the forged row built nothing');
+        $this->assertStringContainsString('not signed', $this->console($kernel, ['command' => 'queue:failed']), 'and is listed as failed, with the reason');
+        $this->assertStringNotContainsString('queue.payload_signing', $this->console($kernel, ['command' => 'check']));
+    }
+
+    public function testCheckWarnsWhenTheQueueIsNotSigned(): void
+    {
+        $kernel = $this->container('database')->get(ConsoleKernel::class);
+        $this->assertStringContainsString('Queued jobs are not signed', $this->console($kernel, ['command' => 'check']));
+
+        file_put_contents("{$this->base}/config/security.php", "<?php return ['secret' => '" . str_repeat('s', 40) . "'];");
+        file_put_contents("{$this->base}/config/queue.php", "<?php return ['default' => 'database', 'accept_unsigned' => true];");
+        $kernel = (function (): ContainerInterface {
+            return Application::configure($this->base)->withProviders(ConsoleServiceProvider::class, DatabaseServiceProvider::class, QueueServiceProvider::class)->build()->container();
+        })()->get(ConsoleKernel::class);
+        $this->assertStringContainsString('queue.accept_unsigned is on', $this->console($kernel, ['command' => 'check']));
     }
 
     public function testInvalidWorkOptions(): void

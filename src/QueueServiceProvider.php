@@ -10,6 +10,7 @@ use Zana\Console\ConsoleKernel;
 use Zana\Container\Contracts\ContainerInterface;
 use Zana\Container\Contracts\ServiceCollectionInterface;
 use Zana\Container\Contracts\ServiceResolverInterface;
+use Zana\Core\Inspection\ApplicationCheck;
 use Zana\Core\ServiceProvider;
 use Zana\Queue\Console\FailedCommand;
 use Zana\Queue\Console\RetryCommand;
@@ -41,7 +42,8 @@ final class QueueServiceProvider extends ServiceProvider
                     $root,
                     $root->has(LoggerInterface::class) ? $root->get(LoggerInterface::class) : null,
                 );
-            })->uses(QueueInterface::class, LoggerInterface::class);
+            })->uses(QueueInterface::class, LoggerInterface::class)
+            ->singleton(Inspection\PayloadSigningCheck::class)->tag(ApplicationCheck::TAG, Inspection\PayloadSigningCheck::class);
 
         foreach ([WorkCommand::class, FailedCommand::class, RetryCommand::class, TableCommand::class] as $command) {
             $services->singleton($command)->tag(ConsoleKernel::TAG, $command);

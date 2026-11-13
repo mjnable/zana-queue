@@ -25,14 +25,14 @@ final class InMemoryQueue implements QueueInterface
     /**
      * @param (Closure(): int)|null $clock Returns the current Unix time; defaults to time()
      */
-    public function __construct(?Closure $clock = null)
+    public function __construct(?Closure $clock = null, private readonly ?PayloadKey $key = null)
     {
         $this->now = $clock ?? static fn (): int => time();
     }
 
     public function push(object $job, ?string $queue = null, int $delay = 0): string
     {
-        return $this->pushRaw(Payload::encode($job), $queue ?? JobOptions::for($job)->queue, $delay);
+        return $this->pushRaw(Payload::encode($job, $this->key), $queue ?? JobOptions::for($job)->queue, $delay);
     }
 
     public function pop(string $queue): ?QueuedJob
@@ -57,7 +57,7 @@ final class InMemoryQueue implements QueueInterface
         $job['attempts']++;
         $this->jobs[$next] = $job;
 
-        return new QueuedJob((string) $next, $queue, $job['payload'], $job['attempts'], new \DateTimeImmutable('@' . $job['availableAt']));
+        return new QueuedJob((string) $next, $queue, $job['payload'], $job['attempts'], new \DateTimeImmutable('@' . $job['availableAt']), $this->key);
     }
 
     public function ack(QueuedJob $job): void

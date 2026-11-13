@@ -31,13 +31,14 @@ final class DatabaseQueue implements QueueInterface
         private readonly ConnectionInterface $connection,
         private readonly int $retryAfter = 90,
         ?Closure $clock = null,
+        private readonly ?PayloadKey $key = null,
     ) {
         $this->now = $clock ?? static fn (): int => time();
     }
 
     public function push(object $job, ?string $queue = null, int $delay = 0): string
     {
-        return $this->pushRaw(Payload::encode($job), $queue ?? JobOptions::for($job)->queue, $delay);
+        return $this->pushRaw(Payload::encode($job, $this->key), $queue ?? JobOptions::for($job)->queue, $delay);
     }
 
     public function pop(string $queue): ?QueuedJob
@@ -71,6 +72,7 @@ final class DatabaseQueue implements QueueInterface
                         (string) $row['payload'],
                         (int) $row['attempts'] + 1,
                         new \DateTimeImmutable('@' . (int) $row['available_at']),
+                        $this->key,
                     );
                 }
             }

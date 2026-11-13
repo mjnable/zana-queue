@@ -16,20 +16,23 @@ namespace Zana\Queue;
  * private properties, and PostgreSQL silently truncates text at the first
  * one. Payloads written before 2.13, as plain serialize() output, are still
  * read.
+ *
+ * With a PayloadKey that signs (2.20), payloads are signed, and decode()
+ * checks the signature before unserialize() builds any object.
  */
 final class Payload
 {
     /** @var array<class-string, list<string>> */
     private static array $allowed = [];
 
-    public static function encode(object $job): string
+    public static function encode(object $job, ?PayloadKey $key = null): string
     {
         if ($job instanceof \Closure || new \ReflectionClass($job)->isAnonymous()) {
             throw new QueueException('Closures and anonymous classes cannot be queued; use a named job class.');
         }
 
         try {
-            return base64_encode(serialize($job));
+            return ($key ?? new PayloadKey(null))->seal(base64_encode(serialize($job)));
         } catch (\Throwable $e) {
             throw new QueueException('The job ' . $job::class . ' cannot be serialized: ' . $e->getMessage(), previous: $e);
         }
@@ -42,15 +45,19 @@ final class Payload
      */
     public static function className(string $payload): string
     {
-        if (preg_match('/^O:\d+:"([^"]+)"/', self::serialized($payload), $match) !== 1 || !class_exists($match[1])) {
+        if (preg_match('/^O:\d+:"([^"]+)"/', self::serialized(PayloadKey::inner($payload)), $match) !== 1 || !class_exists($match[1])) {
             throw new QueueException('The payload does not describe a known job class.');
         }
 
         return $match[1];
     }
 
-    public static function decode(string $payload): object
+    /**
+     * @throws QueueException When the signature is wrong or missing, or the payload holds what its class does not declare
+     */
+    public static function decode(string $payload, ?PayloadKey $key = null): object
     {
+        $payload = ($key ?? new PayloadKey(null))->open($payload);   // before anything is built
         $class = self::className($payload);
         try {
             $job = @unserialize(self::serialized($payload), ['allowed_classes' => self::allowedClasses($class)]);

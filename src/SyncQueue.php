@@ -17,7 +17,7 @@ final class SyncQueue implements QueueInterface
 
     private int $sequence = 0;
 
-    public function __construct(ContainerInterface $root, ?LoggerInterface $logger = null)
+    public function __construct(ContainerInterface $root, ?LoggerInterface $logger = null, private readonly ?PayloadKey $key = null)
     {
         $this->worker = new Worker($this, $root, $logger);
     }
@@ -25,7 +25,7 @@ final class SyncQueue implements QueueInterface
     public function push(object $job, ?string $queue = null, int $delay = 0): string
     {
         $id = 'sync-' . ++$this->sequence;
-        $this->worker->process(new QueuedJob($id, $queue ?? JobOptions::for($job)->queue, Payload::encode($job), 1, new \DateTimeImmutable()));
+        $this->worker->process(new QueuedJob($id, $queue ?? JobOptions::for($job)->queue, Payload::encode($job, $this->key), 1, new \DateTimeImmutable(), $this->key));
 
         return $id;
     }
