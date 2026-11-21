@@ -25,14 +25,17 @@ final class Payload
     /** @var array<class-string, list<string>> */
     private static array $allowed = [];
 
-    public static function encode(object $job, ?PayloadKey $key = null): string
+    /**
+     * @param string|null $nonce Signed with the payload (2.34), so a copy of its row is known for one
+     */
+    public static function encode(object $job, ?PayloadKey $key = null, ?string $nonce = null, ?int $issuedAt = null): string
     {
         if ($job instanceof \Closure || new \ReflectionClass($job)->isAnonymous()) {
             throw new QueueException('Closures and anonymous classes cannot be queued; use a named job class.');
         }
 
         try {
-            return ($key ?? new PayloadKey(null))->seal(base64_encode(serialize($job)));
+            return ($key ?? new PayloadKey(null))->seal(base64_encode(serialize($job)), $nonce, $issuedAt);
         } catch (\Throwable $e) {
             throw new QueueException('The job ' . $job::class . ' cannot be serialized: ' . $e->getMessage(), previous: $e);
         }

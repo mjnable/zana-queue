@@ -43,6 +43,7 @@ final class QueueManager
                 $this->root->get(DatabaseManager::class)->connection($this->config->has('queue.connection') ? $this->config->string('queue.connection') : null),
                 $this->config->int('queue.retry_after', 90),
                 key: self::payloadKey($this->config),
+                replayWindow: $this->config->int('queue.replay_window', DatabaseQueue::REPLAY_WINDOW),
             ),
             default => throw new QueueException("Unknown queue driver: \"{$name}\". Use sync, memory or database."),
         };

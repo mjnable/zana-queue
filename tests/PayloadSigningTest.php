@@ -76,6 +76,46 @@ final class PayloadSigningTest extends TestCase
         Payload::decode($changed, $key);
     }
 
+    /**
+     * 2.34: the nonce and the issue time are signed with the payload. Changing either, to slip a copy past the
+     * record of jobs that ran, breaks the signature.
+     */
+    public function testTheNonceAndTheIssueTimeCannotBeChanged(): void
+    {
+        $key = new PayloadKey(self::KEY);
+        $nonce = str_repeat('a', 32);
+        $sealed = Payload::encode(new RecordJob('pay'), $key, $nonce, 1_800_000_000);
+        $this->assertSame(['nonce' => $nonce, 'issuedAt' => 1_800_000_000], $key->envelope($sealed));
+        $this->assertSame($nonce, PayloadKey::nonceOf($sealed));
+        $this->assertEquals(new RecordJob('pay'), Payload::decode($sealed, $key));
+
+        foreach ([
+            'another nonce' => str_replace(".{$nonce}.", '.' . str_repeat('b', 32) . '.', $sealed),
+            'a later issue time' => str_replace('.1800000000.', '.1900000000.', $sealed),
+            'the nonce in capitals' => str_replace(".{$nonce}.", '.' . strtoupper($nonce) . '.', $sealed),
+        ] as $case => $changed) {
+            $this->assertNotSame($sealed, $changed, $case);
+            try {
+                $key->envelope($changed);
+                $this->fail("{$case}: accepted.");
+            } catch (QueueException $e) {
+                $this->assertStringContainsString('signature is wrong', $e->getMessage(), $case);
+            }
+        }
+
+        // A nonce that is not one, even under a signature made with the key, is refused, as is a seal asked for one.
+        $payload = base64_encode(serialize(new RecordJob('pay')));
+        $mac = hash_hmac('sha256', "zs2|not-a-nonce|1800000000|{$payload}", self::KEY);
+        try {
+            $key->envelope("zs2.{$mac}.not-a-nonce.1800000000.{$payload}");
+            $this->fail('A malformed nonce was accepted.');
+        } catch (QueueException) {
+            $this->addToAssertionCount(1);
+        }
+        $this->expectException(QueueException::class);
+        $key->seal($payload, 'not-a-nonce');
+    }
+
     public function testJobsQueuedBefore220DrainWhenAllowed(): void
     {
         $old = Payload::encode(new RecordJob('queued under 2.19'));

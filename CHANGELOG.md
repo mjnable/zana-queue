@@ -3,6 +3,25 @@
 All Zana packages share one version number and are released together. A release that did
 not change this package is not listed.
 
+## 2.34.0 — Unreleased
+
+### Security
+
+- Copies of signed jobs are refused (a documented limit until now: the signature covered the job, not its row, so
+  someone who can write to the jobs table could copy a job, which then ran again). With `QueueReplayMigration` run:
+  - jobs are signed with a nonce and the time they were issued (`zs2`; `zs1` is still read), which the signature
+    covers, so neither can be changed;
+  - the nonce is unique among the waiting jobs (`zana_jobs.nonce`), so a copy cannot be added beside its job, and
+    recorded in `zana_jobs_done` when the job ran, so a copy added later is refused, whichever of the two runs first;
+  - a job issued longer ago than `queue.replay_window` (30 days by default), whose record may have been pruned, is
+    refused, and so is a job signed before 2.34, which carries no nonce;
+  - each refused job is moved to the failed jobs with the reason; `queue:retry` signs it again with a fresh nonce.
+  Without the migration, or without a key, jobs run as before.
+- `queue:table` writes the missing migrations only, so running it after an upgrade adds
+  `*_refuse_copied_queue_jobs.php`. `check` warns (`queue.payload_replay`) while jobs are signed and it has not run.
+- `PayloadKey::seal()` takes a nonce and an issue time; `envelope()` reads them back once the signature holds;
+  `DatabaseQueue::refusesCopies()` says whether copies are refused. Tested on SQLite, MySQL and PostgreSQL.
+
 ## 2.20.0 — 2026-11-14
 
 ### Security
